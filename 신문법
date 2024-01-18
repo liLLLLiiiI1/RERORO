@@ -1,0 +1,8 @@
+  APPEND VALUE #( BUKRS   = P_BUKRS
+                  GJAHR   = P_GJAHR
+                  ZCHALFS = SO_ZCHAL-LOW
+                  RA_NO   = LV_RA_NO
+                  RA_NO_T = |RA-{ LV_RA_NO }| ) TO GT_DATA.
+
+어펜드로 GT_DATA에 바로 값넣음
+|RA-... 이부분은 컨케트 네이트임 {} 안에 변수넣어야함
