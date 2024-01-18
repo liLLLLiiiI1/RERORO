@@ -1,0 +1,22 @@
+기존 노션에 정리된거에
+필드카탈로그 적는게 빠져있었음. '1' 'X',  위대로 필캍 부분에 적으면 됨.
+
+그리고 도메인 셀렉할떄는 아래처럼 셀렉 해야함.
+노션 정리한거에 셀렉 부분만 아래처럼 바꾸면 되니까 정리하기
+
+  DATA: LT_DROP TYPE TABLE OF DD07T,
+        LS_DROP TYPE DD07T.
+
+  SELECT DDTEXT,DOMVALUE_L
+    FROM DD07T
+    WHERE DOMNAME = 'YUSER_TYPE00'
+    INTO CORRESPONDING FIELDS OF TABLE @LT_DROP.
+
+
+  LOOP AT LT_DROP INTO LS_DROP.
+    GS_DROPDOWN-HANDLE = '1'.
+    GS_DROPDOWN-VALUE = LS_DROP-DOMVALUE_L. "드롭다운 값
+*    GS_DROPDOWN-INT_VALUE = LS_DROP-DOMVALUE_L.
+*    GS_DROPDOWN-VALUE = LS_DROP-DDTEXT.
+    APPEND GS_DROPDOWN TO GT_DROPDOWN.
+  ENDLOOP.
