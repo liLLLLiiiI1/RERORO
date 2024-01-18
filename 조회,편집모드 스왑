@@ -1,0 +1,44 @@
+조회모드 편집모드 버튼 하나로 손쉽게 왔다갔다 하는법.
+우선 탑에 선언 DATA: F_EDIT_MODE TYPE INT4.
+
+그리고 이니셜라이제이션에 시작할떄 
+INITIALIZATION.
+  F_EDIT_MODE = 0. "조회모드로 시작하기 위해
+이 값을 0으로 주기. 이 값이 1이되면 편집이 되는거고 0은 조회모드인 것.
+
+EDIT라는 버튼을 눌러서 조회,편집 왔다갔다 한다고 가정하면
+PAI에서 기능을 줘야함
+
+여기가 PAI
+MODULE USER_COMMAND_0100 INPUT.
+ CASE GV_OKCODE.
+
+    WHEN 'EDIT'.
+      CLEAR GV_OKCODE.
+      PERFORM CHANGE_ALV_MODE.
+      PERFORM ALV_REFREASH.
+    WHEN OTHERS.
+  ENDCASE.
+ENDMODULE.
+
+여기서  PERFORM ALV_REFREASH. 폼에 왔다갔다 하는 기능을 줄 것임.
+그 폼은 아래와 같다.
+FORM CHANGE_ALV_MODE .
+  IF F_EDIT_MODE = 0.
+    F_EDIT_MODE = 1.
+  ELSE.
+    F_EDIT_MODE = 0.
+  ENDIF.
+
+  "행추가, 행삭제 툴바 생기게
+  GR_GRID->SET_READY_FOR_INPUT( I_READY_FOR_INPUT = F_EDIT_MODE ).
+ENDFORM.
+
+
+위를 해줬으면 마지막에 ALV 그리드 띄우는 곳에서 밑 식만 적으면 끝.
+
+
+"ALV 필드들 조회모드로
+    GR_GRID->SET_READY_FOR_INPUT( I_READY_FOR_INPUT = F_EDIT_MODE ).
+
+
