@@ -6,3 +6,6 @@
 
 어펜드로 GT_DATA에 바로 값넣음
 |RA-... 이부분은 컨케트 네이트임 {} 안에 변수넣어야함
+
+"추가
+  GS_DATA-RA_NO_T = |RA-{ GS_DATA-RA_NO  ALPHA = OUT  }|.
