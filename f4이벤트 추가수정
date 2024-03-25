@@ -1,0 +1,11 @@
+탑선언
+
+TYPES : BEGIN OF ty_key1,
+          key1 TYPE ztace_09010-key1,
+        END OF ty_key1.
+        여기 스트럭쳐 개수가 f4눌렀을때 나오는 필드카탈로그 수 
+ "FOR F4 EVENT
+ data      gt_onf4     TYPE TABLE OF ty_key1.
+
+ 
+
