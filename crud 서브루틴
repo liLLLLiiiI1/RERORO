@@ -1,0 +1,1596 @@
+*&---------------------------------------------------------------------*
+*& Include          ZAACE_09021F01
+*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*& Form initialization
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM initialization .
+  "초기값
+  p_pjtid = 'P-24-1000'.
+
+  "variant 활성화
+  g_repid = sy-repid.
+  g_title = sy-title.
+  g_save  = c_a.
+  gs_variant-report = g_repid.
+  gs_variant-handle = sy-dynnr.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form modify_screen
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&----------------------------------------------------OR-----------------*
+FORM modify_screen .
+
+  LOOP AT SCREEN.
+    CASE screen-name.
+      WHEN 'P_PJTID'.
+        screen-input = '0'.
+        MODIFY SCREEN.
+    ENDCASE.
+  ENDLOOP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form get_data
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM get_data .
+
+  CLEAR   : gs_data, g_change.
+  REFRESH : gt_data.
+
+  IF p_pjtrl IS NOT INITIAL.
+    gr_pjtrl-sign = c_i.
+    gr_pjtrl-option = 'EQ'.
+    gr_pjtrl-low    = p_pjtrl.
+    gr_pjtrl-high   = p_pjtrl.
+    APPEND gr_pjtrl.
+  ENDIF.
+
+  "p_delet 퇴사/롤오프 조회 분기 if
+  IF p_delet IS INITIAL.
+
+    SELECT a~pjtid,  a~pernr, a~seqnr, a~spjtid, a~pjtrl, a~uname,
+           a~name_teng, a~name_text, a~compt, a~department, a~modul,
+           a~smodul, a~dtjob, a~tel_number, a~mob_number,
+           a~smtp_addr, a~pgltgv, a~pgltgb, a~gltgv, a~gltgb,
+           a~ipadr, a~macad, a~remrk, a~orgac, a~delet,
+           b~des1
+    INTO CORRESPONDING FIELDS OF TABLE @gt_data
+    FROM ztace_09021 AS a
+    LEFT OUTER JOIN ztace_09010 AS b
+                ON a~smodul EQ b~key1
+                AND a~pjtid EQ b~pjtid
+                AND b~code EQ 'SM'
+   WHERE a~pjtid EQ @p_pjtid
+    AND a~modul  IN @s_modul
+    AND a~smodul IN @s_smodu
+    AND a~name_teng IN @s_name
+    AND a~pjtrl     IN @gr_pjtrl.
+
+  ELSE. "퇴사,롤오프 포함
+    SELECT a~pjtid,  a~pernr, a~seqnr, a~spjtid, a~pjtrl, a~uname,
+           a~name_teng, a~name_text, a~compt, a~department, a~modul,
+           a~smodul, a~dtjob, a~tel_number, a~mob_number,
+           a~smtp_addr, a~pgltgv, a~pgltgb, a~gltgv, a~gltgb,
+           a~ipadr, a~macad, a~remrk, a~orgac, a~delet,
+           b~des1
+    INTO CORRESPONDING FIELDS OF TABLE @gt_data
+    FROM ztace_09021 AS a
+    LEFT OUTER JOIN ztace_09010 AS b
+                ON a~smodul EQ b~key1
+                AND a~pjtid EQ b~pjtid
+                AND b~code EQ 'SM'
+   WHERE a~pjtid EQ @p_pjtid
+    AND a~modul  IN @s_modul
+    AND a~smodul IN @s_smodu
+    AND a~name_teng IN @s_name
+    AND a~pjtrl     IN @gr_pjtrl
+    AND delet EQ @c_x.
+
+  ENDIF.
+
+*  유효성 검사시 SAP ID 조회용
+  SELECT bname
+    FROM usr21
+    INTO CORRESPONDING FIELDS OF TABLE gt_bname
+    WHERE bname NE space.
+
+  IF sy-subrc EQ 0.
+    SORT gt_bname BY bname.
+  ENDIF.
+
+* p/e, data change에 필요한 CODE select
+  SELECT pjtid key1 des1 code flag1
+    FROM ztace_09010
+    INTO CORRESPONDING FIELDS OF TABLE gt_key
+   WHERE pjtid = p_pjtid.
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form create_alv_objects
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM create_alv_objects .
+
+  zccac_gui_alv_grid=>offline( RECEIVING e_offline = g_offline ).
+*  배치일시 컨테이너 생성을 안하기 위해 선언
+  CHECK g_offline EQ 0.
+
+  IF gr_docking_cont IS NOT BOUND.
+    CREATE OBJECT gr_docking_cont
+      EXPORTING
+        dynnr                       = sy-dynnr
+        repid                       = sy-cprog
+        side                        = 1
+        extension                   = 5000
+*       style                       = lv_style
+      EXCEPTIONS
+        cntl_error                  = 1
+        cntl_system_error           = 2
+        create_error                = 3
+        lifetime_error              = 4
+        lifetime_dynpro_dynpro_link = 5.
+
+    CREATE OBJECT gr_grid
+      EXPORTING
+        i_parent          = gr_docking_cont
+        i_appl_events     = c_x
+      EXCEPTIONS
+        error_cntl_create = 1
+        error_cntl_init   = 2
+        error_cntl_link   = 3
+        error_dp_create   = 4
+        OTHERS            = 5.
+
+    "Data change 이벤트 적용을 위한 메소드
+    IF ( sy-batch IS INITIAL ).
+      "데이터 변경시 이벤트 호출
+      gr_grid->register_edit_event( i_event_id = zccac_gui_alv_grid=>mc_evt_modified ) .
+      "데이터 변경 후 enter 시 이벤트 호출
+      gr_grid->register_edit_event( i_event_id = zccac_gui_alv_grid=>mc_evt_enter ) .
+    ENDIF.
+
+    "초기 스크린은 수정안되게끔
+    CALL METHOD gr_grid->set_ready_for_input
+      EXPORTING
+        i_ready_for_input = 0.
+
+  ENDIF.
+
+ENDFORM.
+
+
+*&---------------------------------------------------------------------*
+*& Form refresh_alv_grid
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM refresh_alv_grid .
+
+  DATA : ls_stable TYPE lvc_s_stbl.
+
+  ls_stable-row = 'X'.
+  ls_stable-col = 'X'.
+
+  CALL METHOD gr_grid->set_frontend_layout
+    EXPORTING
+      is_layout = gs_layout.
+
+  CALL METHOD gr_grid->refresh_table_display
+    EXPORTING
+      is_stable = ls_stable
+    EXCEPTIONS
+      finished  = 1
+      OTHERS    = 2.
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form build_fieldcat
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*&      --> GT_FIELDCAT
+*&      --> GS_DATA
+*&---------------------------------------------------------------------*
+FORM build_fieldcat TABLES   pt_fieldcat  TYPE lvc_t_fcat
+                    USING   p_structure.
+
+  PERFORM gsi_fieldcat TABLES  pt_fieldcat
+                       USING  p_structure.
+
+  "col_pos 미지정 필드 순서를 모두 후순위로 두기위해
+  MODIFY pt_fieldcat FROM VALUE #( col_pos = 999
+                                   key = space )
+                     TRANSPORTING  key
+                                   col_pos
+                     WHERE         fieldname NE space.
+
+  LOOP AT pt_fieldcat INTO gs_fieldcat.
+
+    DATA(l_tabix) = sy-tabix.
+
+    CASE gs_fieldcat-fieldname.
+      WHEN 'STATUS'.
+        PERFORM gsi_text USING TEXT-026.
+        gs_fieldcat-fix_column = c_x.
+        gs_fieldcat-just       = c_c.
+        gs_fieldcat-key        = c_x.
+        gs_fieldcat-col_pos    = 1.
+
+      WHEN 'PJTID'.
+        PERFORM gsi_text USING TEXT-001.
+        gs_fieldcat-fix_column = c_x.
+        gs_fieldcat-key        = c_x.
+        gs_fieldcat-just       = c_c.
+
+      WHEN 'PERNR'.
+        PERFORM gsi_text USING TEXT-002.
+        gs_fieldcat-fix_column = c_x.
+        gs_fieldcat-key        = c_x.
+
+      WHEN 'SEQNR'.
+        PERFORM gsi_text USING TEXT-003.
+        gs_fieldcat-lzero  = c_x. "000표시
+        gs_fieldcat-no_out = c_x.
+
+      WHEN 'SPJTID'.
+        PERFORM gsi_text USING TEXT-004.
+        gs_fieldcat-just       = c_c.
+        gs_fieldcat-no_out    = c_x.
+
+      WHEN 'ORGAC'.
+        PERFORM gsi_text USING TEXT-028.
+
+      WHEN 'PJTRL'.
+        PERFORM gsi_text USING TEXT-005.
+        gs_fieldcat-f4availabl = c_x.
+
+      WHEN 'UNAME'.
+        PERFORM gsi_text USING TEXT-006.
+
+      WHEN 'NAME_TENG'.
+        PERFORM gsi_text USING TEXT-007.
+
+      WHEN 'NAME_TEXT'.
+        PERFORM gsi_text USING TEXT-008.
+
+      WHEN 'COMPT'.
+        PERFORM gsi_text USING TEXT-009.
+        gs_fieldcat-f4availabl = c_x.
+
+      WHEN 'DEPARTMENT'.
+        PERFORM gsi_text USING TEXT-010.
+
+      WHEN 'MODUL'.
+        PERFORM gsi_text USING TEXT-011.
+        gs_fieldcat-f4availabl = c_x.
+
+      WHEN 'SMODUL'.
+        PERFORM gsi_text USING TEXT-012.
+        gs_fieldcat-f4availabl = c_x.
+
+      WHEN 'DES1'.
+        PERFORM gsi_text USING TEXT-013.
+
+      WHEN 'DTJOB'.
+        PERFORM gsi_text USING TEXT-014.
+
+      WHEN 'TEL_NUMBER'.
+        PERFORM gsi_text USING TEXT-015.
+
+      WHEN 'MOB_NUMBER'.
+        PERFORM gsi_text USING TEXT-016.
+
+      WHEN 'SMTP_ADDR'.
+        PERFORM gsi_text USING TEXT-017.
+
+      WHEN 'PGLTGV'.
+        PERFORM gsi_text USING TEXT-018.
+        gs_fieldcat-just   = c_c.
+        gs_fieldcat-no_out = c_x.
+
+      WHEN 'PGLTGB'.
+        PERFORM gsi_text USING TEXT-019.
+        gs_fieldcat-just   = c_c.
+        gs_fieldcat-no_out = c_x.
+
+      WHEN 'GLTGV'.
+        PERFORM gsi_text USING TEXT-020.
+        gs_fieldcat-just   = c_c.
+
+      WHEN 'GLTGB'.
+        PERFORM gsi_text USING TEXT-021.
+        gs_fieldcat-just   = c_c.
+
+      WHEN 'IPADR'.
+        PERFORM gsi_text USING TEXT-022.
+        gs_fieldcat-no_out = c_x.
+
+      WHEN 'MACAD'.
+        PERFORM gsi_text USING TEXT-023.
+        gs_fieldcat-no_out = c_x.
+
+      WHEN 'REMRK'.
+        PERFORM gsi_text USING TEXT-024.
+
+      WHEN 'DELET'.
+        PERFORM gsi_text USING TEXT-025.
+        gs_fieldcat-checkbox = c_x.
+
+      WHEN 'ERROR'.
+        PERFORM gsi_text USING TEXT-027.
+
+      WHEN 'MODE'.
+        gs_fieldcat-no_out = c_x.
+
+        "Time Stamp
+      WHEN 'ERDAT'.
+        gs_fieldcat-no_out = c_x.
+      WHEN 'AEDAT'.
+        gs_fieldcat-no_out = c_x.
+      WHEN 'ERZET'.
+        gs_fieldcat-no_out = c_x.
+      WHEN 'AEZET'.
+        gs_fieldcat-no_out = c_x.
+      WHEN 'ERNAM'.
+        gs_fieldcat-no_out = c_x.
+      WHEN 'AENAM'.
+        gs_fieldcat-no_out = c_x.
+
+
+    ENDCASE.
+
+    MODIFY pt_fieldcat FROM gs_fieldcat INDEX l_tabix.
+  ENDLOOP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form exclude_toolbar
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM exclude_toolbar .
+
+  CLEAR : gt_exclude.
+
+  APPEND :
+    zccac_gui_alv_grid=>mc_fc_loc_undo           TO gt_exclude,
+    zccac_gui_alv_grid=>mc_fc_data_save          TO gt_exclude,
+    zccac_gui_alv_grid=>mc_fc_loc_copy           TO gt_exclude,
+    zccac_gui_alv_grid=>mc_fc_loc_copy_row       TO gt_exclude,
+    zccac_gui_alv_grid=>mc_fc_loc_cut            TO gt_exclude,
+    zccac_gui_alv_grid=>mc_fc_loc_delete_row     TO gt_exclude,
+    zccac_gui_alv_grid=>mc_fc_loc_insert_row     TO gt_exclude,
+    zccac_gui_alv_grid=>mc_fc_loc_move_row       TO gt_exclude,
+    zccac_gui_alv_grid=>mc_fc_loc_append_row     TO gt_exclude,
+    zccac_gui_alv_grid=>mc_fc_loc_paste          TO gt_exclude,
+    zccac_gui_alv_grid=>mc_fc_loc_paste_new_row  TO gt_exclude,
+    zccac_gui_alv_grid=>mc_fc_refresh            TO gt_exclude,
+    zccac_gui_alv_grid=>mc_fc_check              TO gt_exclude,
+    zccac_gui_alv_grid=>mc_fc_print              TO gt_exclude,
+    zccac_gui_alv_grid=>mc_fc_graph              TO gt_exclude,
+    zccac_gui_alv_grid=>mc_fc_info               TO gt_exclude.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form set_alv_layout
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM set_alv_layout .
+
+  CLEAR gs_layout.
+
+  gs_layout-edit       = c_x.   " Editable
+  gs_layout-zebra      = c_x.  " ZEBRA
+  gs_layout-cwidth_opt = c_x.  " OPTIMIZE COLUMN WIDTH
+  gs_layout-sel_mode   = 'D'.
+  gs_layout-info_fname = 'COLOR'." Line Color
+  gs_layout-stylefname = 'CELLTAB'. " Cell Style
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form hdl_toolbar
+*&---------------------------------------------------------------------*
+FORM hdl_toolbar USING   p_object   TYPE REF TO cl_alv_event_toolbar_set
+                         p_interactive "TYPE char01
+                         p_sender.
+
+  DATA : ls_toolbar  TYPE stb_button.
+
+  CLEAR ls_toolbar.
+  ls_toolbar-butn_type = 3.   " Separator
+  APPEND ls_toolbar TO p_object->mt_toolbar.
+
+  CLEAR ls_toolbar.
+  ls_toolbar-function  = 'DISP'.
+  ls_toolbar-icon      = icon_display.
+  ls_toolbar-quickinfo = TEXT-b01. "'Display'.
+  ls_toolbar-disabled  = space.
+  ls_toolbar-text      = TEXT-b01.
+  APPEND ls_toolbar      TO p_object->mt_toolbar.
+
+  CLEAR ls_toolbar.
+  ls_toolbar-function  = 'DELE'.
+  ls_toolbar-icon      = icon_delete.
+  ls_toolbar-quickinfo = TEXT-b02. "'Delete Line'.
+  ls_toolbar-disabled  = space.
+  ls_toolbar-text      = TEXT-b02.
+  APPEND ls_toolbar      TO p_object->mt_toolbar.
+
+  CLEAR ls_toolbar.
+  ls_toolbar-function  = 'CREA'.
+  ls_toolbar-icon      = icon_create.
+  ls_toolbar-quickinfo = TEXT-b03. "'Create'.
+  ls_toolbar-disabled  = space.
+  ls_toolbar-text      = TEXT-b03.
+  APPEND ls_toolbar      TO p_object->mt_toolbar.
+
+  CLEAR ls_toolbar.
+  ls_toolbar-function  = 'CHAN'.
+  ls_toolbar-icon      = icon_change.
+  ls_toolbar-quickinfo = TEXT-b04. "'Change'.
+  ls_toolbar-disabled  = space.
+  ls_toolbar-text      = TEXT-b04.
+  APPEND ls_toolbar      TO p_object->mt_toolbar.
+
+  CLEAR ls_toolbar.
+  ls_toolbar-function  = 'SAVE'.
+  ls_toolbar-icon      = icon_system_save.
+  ls_toolbar-quickinfo = TEXT-b05. "'Save'.
+  ls_toolbar-disabled  = space.
+  ls_toolbar-text      = TEXT-b05.
+  APPEND ls_toolbar      TO p_object->mt_toolbar.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form set_handler
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM set_handler USING pr_grid TYPE REF TO zccac_gui_alv_grid.
+
+  SET HANDLER gr_cl_event->hdl_toolbar                FOR pr_grid..
+  SET HANDLER gr_cl_event->hdl_user_command           FOR pr_grid.
+  SET HANDLER gr_cl_event->hdl_data_changed           FOR pr_grid.
+  SET HANDLER gr_cl_event->hdl_data_changed_finished  FOR pr_grid.
+  SET HANDLER gr_cl_event->hdl_onf4                   FOR pr_grid.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form create_grid
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM create_grid .
+
+*.- Set excluding button
+  PERFORM exclude_toolbar.
+
+*.- Set Layout Structure
+  PERFORM set_alv_layout.
+
+*.- Set Field Catalog.
+  PERFORM build_fieldcat  TABLES gt_fieldcat
+                          USING  gs_data.
+
+*.- ALV F4 event
+  PERFORM on_f4.
+
+*... EVENT 이벤트 메소드를 타게 하기 위한 form
+  PERFORM gsi_event_info.
+
+  PERFORM set_handler USING gr_grid.
+
+
+*.- First display
+  PERFORM gsi_display_grid  TABLES gt_data
+                                   gt_fieldcat
+                                   gt_sort
+                                   gt_exclude
+                            USING  gr_grid
+                                   gs_layout
+                                   gs_variant.
+
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form hdl_user_command
+*&---------------------------------------------------------------------*
+FORM hdl_user_command USING    p_ucomm LIKE sy-ucomm
+                               p_sender.
+
+  CASE p_ucomm.
+    WHEN 'DISP'.
+      PERFORM get_data.
+      PERFORM modify_data.
+      "ALV 편집 메소드
+      CALL METHOD gr_grid->set_ready_for_input
+        EXPORTING
+          i_ready_for_input = 0.
+
+    WHEN 'CREA'.
+      PERFORM insert_line.
+      CALL METHOD gr_grid->set_ready_for_input
+        EXPORTING
+          i_ready_for_input = 1.
+
+    WHEN 'CHAN'.
+      PERFORM change_line.
+      CALL METHOD gr_grid->set_ready_for_input
+        EXPORTING
+          i_ready_for_input = 1.
+
+    WHEN 'SAVE'.
+      PERFORM gsi_popup_confirm USING TEXT-p01 TEXT-p02 ''.
+      CHECK g_answer = '1'.
+      PERFORM save_data. "save로직
+      CALL METHOD gr_grid->set_ready_for_input
+        EXPORTING
+          i_ready_for_input = 0.
+
+    WHEN 'DELE'.
+      PERFORM delete_data.
+  ENDCASE.
+
+  PERFORM refresh_alv_grid.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form modify_data
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM modify_data .
+
+  LOOP AT gt_data INTO gs_data.
+
+    g_tabix = sy-tabix.
+
+    PERFORM set_display.
+
+    gs_data-mode = c_u. "update mode
+
+    MODIFY gt_data FROM gs_data INDEX g_tabix.
+
+  ENDLOOP.
+
+  g_cnt = g_index = lines( gt_data ).
+  MESSAGE s000 WITH TEXT-m01 g_cnt TEXT-m02.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form insert_line
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM insert_line .
+
+  DO 5 TIMES.
+
+    CLEAR : gs_data.
+    gs_data-mode    = c_i.
+    gs_data-status  = icon_create.
+
+    gs_data-pjtid = p_pjtid.
+
+    CLEAR gs_data-celltab.
+
+    PERFORM modify_cellstyl USING : 'STATUS'   'D' gs_data-celltab,
+                                    'PJTID'    'D' gs_data-celltab,
+                                    'DES1'     'D' gs_data-celltab,
+                                    'ERROR'    'D' gs_data-celltab.
+
+    INSERT gs_data INTO gt_data INDEX 1.
+
+  ENDDO.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form modify_cellstyl
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*&      --> P_
+*&      --> P_
+*&      --> GS_DATA_CELLTAB
+*&---------------------------------------------------------------------*
+FORM modify_cellstyl  USING p_fname
+                            p_value
+                            pt_celltab TYPE lvc_t_styl.
+
+  DATA : ls_lvc_styl TYPE lvc_s_styl.
+
+  ls_lvc_styl-fieldname = p_fname.
+
+  CASE p_value.
+    WHEN 'E'.
+      ls_lvc_styl-style = cl_gui_alv_grid=>mc_style_enabled.
+      INSERT ls_lvc_styl INTO TABLE pt_celltab.
+    WHEN 'D'.
+      ls_lvc_styl-style = cl_gui_alv_grid=>mc_style_disabled.
+      INSERT ls_lvc_styl INTO TABLE pt_celltab.
+  ENDCASE.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form check_authority
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM check_authority .
+
+*  CHECK ztace_09000 IS INITIAL.
+
+  SELECT SINGLE @abap_true
+    FROM ztace_09021
+   WHERE pjtid EQ @p_pjtid
+     AND uname EQ @sy-uname
+    INTO @DATA(l_true).
+
+  IF l_true IS INITIAL.
+    MESSAGE e000 WITH TEXT-m03.
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form change_line
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM change_line .
+
+  DATA : l_flag.
+
+  CALL METHOD gr_grid->get_selected_rows
+    IMPORTING
+      et_index_rows = DATA(lt_rows).
+
+  IF lt_rows IS INITIAL.
+    MESSAGE s000 WITH TEXT-e01 DISPLAY LIKE c_e.
+    RETURN.
+  ENDIF.
+
+  CLEAR : gt_09021, g_cnt, l_flag.
+
+  LOOP AT lt_rows INTO DATA(ls_rows).
+
+    READ TABLE gt_data INTO gs_data INDEX ls_rows-index.
+
+    gs_data-color = space. "수정시 빨간줄 지우기 위함
+
+    "Lock object
+    CALL FUNCTION 'ENQUEUE_EZ_ZTACE_09021'
+      EXPORTING
+        mode_ztace_09021 = c_e
+        mandt            = sy-mandt
+        pjtid            = p_pjtid
+        pernr            = gs_data-pernr
+        seqnr            = gs_data-seqnr
+        x_pjtid          = ' '
+        x_pernr          = ' '
+        x_seqnr          = ' '
+      EXCEPTIONS
+        foreign_lock     = 1
+        system_failure   = 2
+        OTHERS           = 3.
+
+    IF sy-subrc EQ 0.
+
+      CLEAR : gs_data-celltab.
+
+      "락걸린 데이터가 풀렸을때 락 아이콘을 없애기 위함.
+      gs_data-status = COND #( WHEN gs_data-status NE icon_locked THEN gs_data-status  ELSE space ).
+
+      IF gs_data-status = icon_create.
+        PERFORM set_display_change2.
+      ELSEIF gs_data-pernr IS NOT INITIAL.
+        PERFORM set_display_change. "편집되면 안되는 필드 disabled
+      ELSEIF gs_data-pernr IS INITIAL AND gs_data-status = icon_led_red.
+        PERFORM set_display_change2. "편집되면 안되는 필드 disabled 사번제외
+      ENDIF.
+
+    ELSE.
+      gs_data-status = icon_locked.
+      l_flag = c_x.
+
+*      CLEAR gt_enq.
+*      g_garg(3)     = sy-mandt.
+*      g_garg+3(10)  = gs_data-pjtid.
+*      g_garg+13(12) = gs_data-pernr.
+*      g_garg+25(12) = gs_data-uname.
+*
+*      "해당 데이터 잠금 유무 체크 펑션
+*      CALL FUNCTION 'ENQUE_READ'
+*        EXPORTING
+*          gclient = sy-mandt
+*          gname   = 'ZTACE_09020'
+**          garg    = g_garg "각 테이블 키값 반환
+*          guname  = space
+*        TABLES
+*          enq     = gt_enq.
+*
+*      IF gt_enq IS NOT INITIAL.
+*        READ TABLE gt_enq INTO gs_enq INDEX 1.
+*
+*        SELECT name_textc UP TO 1 ROWS
+*        FROM user_addr
+*        INTO g_name
+*        WHERE bname EQ gs_enq-guname
+*        ORDER BY name_textc.
+*        ENDSELECT.
+*
+*        CONCATENATE g_name '(' gs_enq-guname ')' TEXT-e02
+*        INTO gs_data-error SEPARATED BY space.
+*      ENDIF.
+
+    ENDIF.
+
+    MODIFY gt_data FROM gs_data INDEX ls_rows-index.
+  ENDLOOP.
+
+  "락걸린 데이터 메시지
+  IF l_flag IS NOT INITIAL.
+    MESSAGE i000 WITH TEXT-e03 DISPLAY LIKE c_e.
+  ENDIF.
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form set_display
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM set_display .
+
+  CLEAR : gs_data-celltab.
+
+  PERFORM modify_cellstyl USING : 'STATUS'        'D' gs_data-celltab,
+                                  'PJTID'         'D' gs_data-celltab,
+                                  'PERNR'         'D' gs_data-celltab,
+                                  'SEQNR'         'D' gs_data-celltab,
+                                  'SPJTID'        'D' gs_data-celltab,
+                                  'ORGAC'         'D' gs_data-celltab,
+                                  'PJTRL'         'D' gs_data-celltab,
+                                  'UNAME'         'D' gs_data-celltab,
+                                  'NAME_TENG'     'D' gs_data-celltab,
+                                  'NAME_TEXT'     'D' gs_data-celltab,
+                                  'COMPT'         'D' gs_data-celltab,
+                                  'DEPARTMENT'    'D' gs_data-celltab,
+                                  'MODUL'         'D' gs_data-celltab,
+                                  'SMODUL'        'D' gs_data-celltab,
+                                  'DES1'          'D' gs_data-celltab,
+                                  'DTJOB'         'D' gs_data-celltab,
+                                  'TEL_NUMBER'    'D' gs_data-celltab,
+                                  'MOB_NUMBER'    'D' gs_data-celltab,
+                                  'SMTP_ADDR'     'D' gs_data-celltab,
+                                  'PGLTGV'        'D' gs_data-celltab,
+                                  'PGLTGB'        'D' gs_data-celltab,
+                                  'GLTGV'         'D' gs_data-celltab,
+                                  'GLTGB'         'D' gs_data-celltab,
+                                  'IPADR'         'D' gs_data-celltab,
+                                  'MACAD'         'D' gs_data-celltab,
+                                  'REMRK'         'D' gs_data-celltab,
+                                  'DELET'         'D' gs_data-celltab,
+                                  'ERROR'         'D' gs_data-celltab.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form set_display_change
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM set_display_change .
+
+  CLEAR gs_data-celltab.
+
+  PERFORM modify_cellstyl USING : 'STATUS'        'D' gs_data-celltab,
+                                  'PJTID'         'D' gs_data-celltab,
+                                  'PERNR'         'D' gs_data-celltab,
+                                  'SEQNR'         'D' gs_data-celltab,
+                                  'DES1'          'D' gs_data-celltab,
+                                  'ERROR'         'D' gs_data-celltab.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form save_data
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM save_data .
+
+  CLEAR : g_change. "변동체크 변수 클리어
+
+  DATA : l_change  TYPE char1.
+  DATA : l_total   TYPE i,
+         l_success TYPE i,
+         l_error   TYPE i.
+
+*Check Changed Data.
+  PERFORM check_change_data USING l_change.
+
+  "변경 시 변경된 데이터가 없다면 메시지.
+  IF l_change IS INITIAL.
+    MESSAGE s000 WITH TEXT-e04 DISPLAY LIKE c_e.
+    EXIT.
+  ENDIF.
+
+  LOOP AT gt_data INTO gs_data.
+    g_tabix = sy-tabix.
+
+    IF gs_data-status = icon_create OR
+       gs_data-status = icon_change OR
+     ( gs_data-status = icon_led_red AND gs_data-error NE space ).
+
+      "유효성 검사
+      PERFORM check_save_data USING gs_data.
+
+      IF gs_data-mode = c_d.
+        DELETE gt_data INDEX g_tabix.
+        CONTINUE.
+      ENDIF.
+
+      IF gs_data-error IS INITIAL.
+
+        CLEAR gs_09021.
+        MOVE-CORRESPONDING gs_data TO gs_09021.
+
+        "Time stamp
+        CASE gs_data-mode.
+          WHEN c_u.
+            gs_09021-aedat = gs_data-aedat = sy-datlo.
+            gs_09021-aezet = gs_data-aezet = sy-uzeit.
+            gs_09021-aenam = gs_data-aenam = sy-uname.
+
+          WHEN c_i.
+            gs_09021-erdat = gs_data-erdat =
+            gs_09021-aedat = gs_data-aedat = sy-datlo.
+
+            gs_09021-erzet = gs_data-erzet =
+            gs_09021-aezet = gs_data-aezet = sy-uzeit.
+
+            gs_09021-ernam = gs_data-ernam =
+            gs_09021-aenam = gs_data-aenam = sy-uname.
+
+        ENDCASE.
+
+        MODIFY ztace_09021 FROM gs_09021.
+
+        IF sy-subrc EQ 0.
+          l_total = 1 + l_total.
+
+          gs_data-status = icon_led_green.
+          gs_data-color  = space.
+          gs_data-mode   = c_u.
+        ENDIF.
+
+        PERFORM set_display.
+
+      ENDIF.
+
+    ELSE.
+      PERFORM set_display.
+    ENDIF.
+
+    MODIFY gt_data FROM gs_data INDEX g_tabix.
+
+  ENDLOOP.
+
+  COMMIT WORK.
+
+  PERFORM gsi_refresh_data USING gr_grid gs_layout.
+
+  MESSAGE s000 WITH TEXT-m01 l_total TEXT-m04.
+
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form check_change_data
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*&      --> L_CHANGE
+*&---------------------------------------------------------------------*
+FORM check_change_data  USING p_change.
+
+  CLEAR p_change.
+
+  DATA : l_valid.
+
+*  값이 변동이 있으면 p_change에 값을 입력.
+  LOOP AT gt_data INTO gs_data WHERE status EQ icon_create
+                                  OR status EQ icon_change
+                                  OR ( status EQ icon_led_red AND error NE space ).
+    p_change = c_x.
+    EXIT.
+
+  ENDLOOP.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form check_save_data
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*&      --> GS_DATA
+*&---------------------------------------------------------------------*
+FORM check_save_data  USING ps_data LIKE gs_data.
+
+
+  CLEAR ps_data-error.
+
+  CASE ps_data-mode.
+    WHEN c_i. "insert
+
+      "입력하지 않은 행은 delete하기 위함
+      IF ps_data-pernr     IS INITIAL AND
+        "ps_data-spjtid IS INITIAL AND
+         ps_data-pjtrl     IS INITIAL AND ps_data-name_teng IS INITIAL AND
+         ps_data-name_text IS INITIAL AND ps_data-compt IS INITIAL AND
+         ps_data-modul     IS INITIAL AND ps_data-dtjob IS INITIAL AND
+         ps_data-smtp_addr IS INITIAL AND ps_data-orgac IS INITIAL AND
+         ps_data-uname     IS INITIAL AND ps_data-department IS INITIAL AND
+         ps_data-smodul    IS INITIAL AND ps_data-des1  IS INITIAL AND
+         ps_data-dtjob     IS INITIAL AND ps_data-tel_number IS INITIAL AND
+         ps_data-mob_number IS INITIAL AND ps_data-smtp_addr IS INITIAL AND
+         "ps_data-pgltgb    IS  INITIAL AND
+        "ps_data-pgltgv IS INITIAL AND
+         ps_data-gltgb     IS  INITIAL AND ps_data-gltgv  IS INITIAL AND
+         ps_data-ipadr     IS  INITIAL AND ps_data-macad  IS INITIAL AND
+         ps_data-remrk     IS INITIAL AND  ps_data-delet  IS INITIAL AND
+         ps_data-error IS INITIAL.
+
+        ps_data-mode = c_d.
+
+      ENDIF.
+
+
+      "유효성 검사
+      IF ps_data-pjtid IS INITIAL.
+        ps_data-error = TEXT-e05.
+        ps_data-color = c_610.
+        ps_data-status = icon_led_red.
+        EXIT.
+      ENDIF.
+
+      IF ps_data-pernr IS INITIAL.
+        ps_data-error = TEXT-e06.
+        ps_data-color = c_610.
+        ps_data-status = icon_led_red.
+        EXIT.
+      ENDIF.
+
+*      IF ps_data-spjtid IS INITIAL.
+*        ps_data-error = TEXT-e07.
+*        ps_data-color = c_610.
+*        ps_data-status = icon_led_red.
+*        EXIT.
+*      ENDIF.
+
+      IF ps_data-pjtrl IS INITIAL.
+        ps_data-error = TEXT-e08.
+        ps_data-color = c_610.
+        ps_data-status = icon_led_red.
+        EXIT.
+      ENDIF.
+
+      IF ps_data-name_teng IS INITIAL.
+        ps_data-error = TEXT-e09.
+        ps_data-color = c_610.
+        ps_data-status = icon_led_red.
+        EXIT.
+      ENDIF.
+
+      IF ps_data-name_text IS INITIAL.
+        ps_data-error = TEXT-e10.
+        ps_data-color = c_610.
+        ps_data-status = icon_led_red.
+        EXIT.
+      ENDIF.
+
+      IF ps_data-compt IS INITIAL.
+        ps_data-error = TEXT-e11.
+        ps_data-color = c_610.
+        ps_data-status = icon_led_red.
+        EXIT.
+      ENDIF.
+
+      IF ps_data-modul IS INITIAL.
+        ps_data-error = TEXT-e12.
+        ps_data-color = c_610.
+        ps_data-status = icon_led_red.
+        EXIT.
+      ENDIF.
+
+*      IF ps_data-smodul IS INITIAL.
+*        ps_data-error = TEXT-e13.
+*        ps_data-color = c_610.
+*        ps_data-status = icon_led_red.
+*        EXIT.
+*      ENDIF.
+
+*      IF ps_data-des1 IS INITIAL.
+*        ps_data-error = TEXT-e14.
+*        ps_data-color = c_610.
+*        ps_data-status = icon_led_red.
+*        EXIT.
+*      ENDIF.
+
+      IF ps_data-dtjob IS INITIAL.
+        ps_data-error = TEXT-e15.
+        ps_data-color = c_610.
+        ps_data-status = icon_led_red.
+        EXIT.
+      ENDIF.
+
+      IF ps_data-smtp_addr IS INITIAL.
+        ps_data-error = TEXT-e16.
+        ps_data-color = c_610.
+        ps_data-status = icon_led_red.
+        EXIT.
+      ENDIF.
+
+*      IF ps_data-pgltgv IS INITIAL AND ps_data-gltgv IS INITIAL.
+*        ps_data-error = TEXT-e18.
+*        ps_data-color = c_610.
+*        ps_data-status = icon_led_red.
+*        EXIT.
+*      ENDIF.
+
+      IF ps_data-delet IS NOT INITIAL AND ps_data-gltgb IS INITIAL.
+        ps_data-error = TEXT-e19.
+        ps_data-color = c_610.
+        ps_data-status = icon_led_red.
+        EXIT.
+      ENDIF.
+
+      READ TABLE gt_bname INTO gs_bname WITH KEY bname = gs_data-uname BINARY SEARCH.
+      IF sy-subrc NE 0.
+        ps_data-error = TEXT-e20.
+        ps_data-color = c_610.
+        ps_data-status = icon_led_red.
+        EXIT.
+      ENDIF.
+
+    WHEN c_u. "change
+*      유효성 검사
+      IF ps_data-delet IS NOT INITIAL AND ps_data-gltgb IS INITIAL.
+        ps_data-error = TEXT-e19.
+        ps_data-color = c_610.
+        ps_data-status = icon_led_red.
+        EXIT.
+      ENDIF.
+
+*      IF ps_data-spjtid IS INITIAL.
+*        ps_data-error = TEXT-e07.
+*        ps_data-color = c_610.
+*        ps_data-status = icon_led_red.
+*        EXIT.
+*      ENDIF.
+*
+*      IF ps_data-pjtrl IS INITIAL.
+*        ps_data-error = TEXT-e08.
+*        ps_data-color = c_610.
+*        ps_data-status = icon_led_red.
+*        EXIT.
+*      ENDIF.
+*
+*      IF ps_data-name_teng IS INITIAL.
+*        ps_data-error = TEXT-e09.
+*        ps_data-color = c_610.
+*        ps_data-status = icon_led_red.
+*        EXIT.
+*      ENDIF.
+*
+*      IF ps_data-name_text IS INITIAL.
+*        ps_data-error = TEXT-e10.
+*        ps_data-color = c_610.
+*        ps_data-status = icon_led_red.
+*        EXIT.
+*      ENDIF.
+*
+*      IF ps_data-compt IS INITIAL.
+*        ps_data-error = TEXT-e11.
+*        ps_data-color = c_610.
+*        ps_data-status = icon_led_red.
+*        EXIT.
+*      ENDIF.
+*
+*      IF ps_data-modul IS INITIAL.
+*        ps_data-error = TEXT-e12.
+*        ps_data-color = c_610.
+*        ps_data-status = icon_led_red.
+*        EXIT.
+*      ENDIF.
+*
+*      IF ps_data-dtjob IS INITIAL.
+*        ps_data-error = TEXT-e15.
+*        ps_data-color = c_610.
+*        ps_data-status = icon_led_red.
+*        EXIT.
+*      ENDIF.
+*
+*      IF ps_data-smtp_addr IS INITIAL.
+*        ps_data-error = TEXT-e16.
+*        ps_data-color = c_610.
+*        ps_data-status = icon_led_red.
+*        EXIT.
+*      ENDIF.
+*
+*      IF ps_data-pgltgv IS INITIAL AND ps_data-gltgv IS INITIAL.
+*        ps_data-error = TEXT-e18.
+*        ps_data-color = c_610.
+*        ps_data-status = icon_led_red.
+*        EXIT.
+*      ENDIF.
+
+      IF ps_data-delet IS NOT INITIAL AND ps_data-gltgb IS INITIAL.
+        ps_data-error = TEXT-e19.
+        ps_data-color = c_610.
+        ps_data-status = icon_led_red.
+        EXIT.
+      ENDIF.
+
+      READ TABLE gt_bname INTO gs_bname WITH KEY bname = gs_data-uname BINARY SEARCH.
+      IF sy-subrc NE 0.
+        ps_data-error = TEXT-e20.
+        ps_data-color = c_610.
+        ps_data-status = icon_led_red.
+        EXIT.
+      ENDIF.
+
+  ENDCASE.
+  "생성 시 동일한 키 데이터 입력  방지를 위함.
+  IF    ps_data-mode  EQ c_i AND
+        ps_data-pjtid IS NOT INITIAL AND
+        ps_data-pernr IS NOT INITIAL.
+
+    SELECT SINGLE @abap_true
+      FROM ztace_09021
+      WHERE pjtid EQ @p_pjtid
+      AND   pernr EQ @ps_data-pernr
+      AND   seqnr EQ @ps_data-seqnr
+      INTO @DATA(l_true).
+
+    IF l_true IS NOT INITIAL.
+      IF ps_data-mode EQ c_i.
+        ps_data-error = TEXT-e17.
+        ps_data-color = c_610.
+        ps_data-status = icon_led_red.
+        EXIT.
+      ENDIF.
+
+    ENDIF.
+
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form hdl_data_changed
+*&---------------------------------------------------------------------*
+FORM hdl_data_changed USING pr_data_changed
+                            TYPE REF TO cl_alv_changed_data_protocol
+                            p_ucomm TYPE sy-ucomm
+                            p_sender.
+
+  DATA : l_value TYPE char50,
+         ls_list TYPE ty_data.
+
+  DATA :l_code(20).
+
+
+  CHECK pr_data_changed->mt_good_cells IS NOT INITIAL.
+
+* 현재 셀을 벗어나면 인식하는 상태이므로 loop가 아닌 read를 씀.
+  READ TABLE pr_data_changed->mt_good_cells ASSIGNING FIELD-SYMBOL(<lfs_cell>) INDEX 1.
+
+  "<lfs_cell>의 값을 ls_cell에 복사
+  DATA(ls_cell) = CORRESPONDING lvc_s_modi( <lfs_cell> ).
+
+  READ TABLE gt_data INTO ls_list INDEX <lfs_cell>-row_id.
+
+  CASE <lfs_cell>-fieldname.
+    WHEN 'PJTRL'.
+      l_code = 'RO'.
+    WHEN 'COMPT'.
+      l_code = 'CP'.
+    WHEN 'MODUL'.
+      l_code = 'MD'.
+    WHEN 'SMODUL'.
+      "빈 값일 수 있음.
+      IF <lfs_cell>-value IS NOT INITIAL.
+        l_code = 'SM'.
+      ENDIF.
+
+      "수정 시 서브모듈이 비어있으면 내역도 지우기 위함
+      IF <lfs_cell>-value IS INITIAL.
+        CLEAR ls_list-des1.
+        MODIFY gt_data FROM ls_list INDEX <lfs_cell>-row_id TRANSPORTING des1.
+      ENDIF.
+
+  ENDCASE.
+
+  IF l_code EQ 'SM'.
+
+    READ TABLE gt_key INTO gs_key
+                WITH KEY pjtid = ls_list-pjtid
+                         key1 = <lfs_cell>-value "입력값
+                         code = l_code
+                         flag1 = ls_list-modul. "모듈에 해당하는 서브모듈인지 체크
+
+    IF sy-subrc NE 0 AND ls_list-modul IS NOT INITIAL.
+      MESSAGE s000 DISPLAY LIKE c_e WITH TEXT-e22. "모듈에 맞는 서브모듈 입력 msg
+      CLEAR <lfs_cell>.
+
+    ELSEIF sy-subrc NE 0 AND ls_list-modul IS INITIAL.
+      MESSAGE s000 DISPLAY LIKE c_e WITH TEXT-e23. "모듈 우선 입력 msg
+      CLEAR <lfs_cell>.
+    ENDIF.
+
+    IF sy-subrc EQ 0. "서브모듈 내역입력
+      PERFORM gsi_modify_cell  USING pr_data_changed
+                                     ls_cell-row_id
+                                     'DES1'
+                                     gs_key-des1.
+    ENDIF.
+
+
+  ELSEIF l_code EQ 'MD' AND ls_list-smodul IS NOT INITIAL.
+
+    CLEAR : ls_list-smodul, ls_list-des1. "모듈 변경시 서브모듈 clear
+    MODIFY gt_data FROM ls_list INDEX <lfs_cell>-row_id TRANSPORTING smodul des1.
+
+    "잘못된 모듈입력 시 프로토콜 메시지를 띄우기 위함.
+    READ TABLE gt_key INTO gs_key
+                     WITH KEY key1 = <lfs_cell>-value "입력값
+                              code = l_code.
+
+    "code(RO,CP) 잘못된 데이터 입력시  프로토콜 메시지 띄우기 위함
+  ELSEIF l_code IS NOT INITIAL.
+    READ TABLE gt_key INTO gs_key
+                      WITH KEY key1 = <lfs_cell>-value "입력값
+                               code = l_code.
+  ENDIF.
+
+  "p/e에 없는 값 입력시 에러 메시지
+  IF sy-subrc NE 0 AND l_code IS NOT INITIAL AND l_code NE 'SM'.
+    CALL METHOD pr_data_changed->add_protocol_entry
+      EXPORTING
+        i_msgid     = 'ZMACE_00' "메세지ID
+        i_msgty     = c_e "에러 타입 E
+        i_msgno     = '000' "&&&& (메세지 번호)
+        i_msgv1     = TEXT-e21 "표시할 메세지
+*       i_fieldname = <lfs_cell>-fieldname "대상필드명
+        i_fieldname = ls_cell-fieldname "대상필드명
+*       i_row_id    = <lfs_cell>-row_id. "대상 행 번호
+        i_row_id    = ls_cell-row_id. "대상 행 번호
+
+  ENDIF.
+
+  "수정시 CHANGE 아이콘
+  IF ls_list-mode = c_u AND ls_list-status NE icon_change.
+    l_value = icon_change.
+    PERFORM gsi_modify_cell  USING pr_data_changed
+*                                   <lfs_cell>-row_id
+                                   ls_cell-row_id
+                                   'STATUS'
+                                   l_value.
+  ENDIF.
+
+  CALL METHOD cl_gui_cfw=>flush.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form delete_data
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM delete_data .
+
+  DATA : l_answer TYPE c.
+
+
+
+  CALL METHOD gr_grid->get_selected_rows
+    IMPORTING
+      et_index_rows = DATA(lt_rows).
+
+  IF lt_rows IS INITIAL.
+    MESSAGE s000 WITH TEXT-e01 DISPLAY LIKE c_e.
+    RETURN.
+  ENDIF.
+
+  CLEAR l_answer.
+
+  CALL FUNCTION 'POPUP_TO_CONFIRM'
+    EXPORTING
+      titlebar              = 'Confirm'
+      text_question         = TEXT-m06
+      icon_button_1         = 'ICON_CHECKED'
+      text_button_1         = 'Yes'
+      text_button_2         = 'No'
+      icon_button_2         = 'ICON_SYSTEM_CANCEL'
+      display_cancel_button = ''
+    IMPORTING
+      answer                = l_answer.
+
+  IF l_answer NE '1'.
+    RETURN.
+  ENDIF.
+
+  CLEAR : gt_09021, g_cnt.
+
+  LOOP AT lt_rows INTO DATA(ls_rows) WHERE rowtype LE space.
+
+    READ TABLE gt_data INTO gs_data INDEX ls_rows-index.
+
+    "락걸린 데이터는 삭제 안되게 조건
+    IF gs_data-status NE icon_locked.
+
+      CLEAR gs_09021.
+
+      SELECT SINGLE *
+        FROM ztace_09021
+        INTO CORRESPONDING FIELDS OF gs_09021
+        WHERE pjtid EQ p_pjtid
+        AND pernr EQ gs_data-pernr
+        AND seqnr EQ gs_data-seqnr.
+
+      IF sy-subrc EQ 0.
+        APPEND gs_09021 TO gt_09021.
+      ENDIF.
+
+      gs_data-mode = c_d.
+
+      MODIFY gt_data FROM gs_data INDEX ls_rows-index
+                                  TRANSPORTING mode.
+
+      g_cnt = g_cnt + 1.
+
+    ENDIF.
+
+  ENDLOOP.
+
+  DELETE ztace_09021 FROM TABLE gt_09021.
+  COMMIT WORK.
+
+  DELETE gt_data WHERE mode = c_d.
+
+  MESSAGE s000 WITH TEXT-m01 g_cnt TEXT-m05.
+
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*& Form HDL_ONF4
+*&---------------------------------------------------------------------*
+FORM hdl_onf4 USING p_fieldname   TYPE lvc_fname
+                    p_fieldvalue  TYPE lvc_value
+                    ps_row_no     TYPE lvc_s_roid
+                    pr_event_data TYPE REF TO cl_alv_event_data
+                    pt_bad_cells  TYPE lvc_t_modi
+                    p_display     TYPE char01
+                    p_sender.
+
+  FIELD-SYMBOLS : <lft_itab> TYPE lvc_t_modi.
+
+  DATA: ls_modi TYPE lvc_s_modi,
+        ls_ret  TYPE ddshretval,
+        lt_ret  LIKE TABLE OF ls_ret.
+
+  DATA :l_where(20),
+        l_title(20).
+
+  CLEAR   : ls_modi.
+  REFRESH : gt_onf4.
+
+  "필드마다 p/e값을 다르게 보여주기 위한 case문
+  CASE p_fieldname.
+    WHEN 'PJTRL'.
+      l_where = |code = 'RO'|.
+      l_title = TEXT-005.
+
+    WHEN 'COMPT'.
+      l_where = |code = 'CP'|.
+      l_title = TEXT-009.
+
+    WHEN 'MODUL'.
+      l_where = |code = 'MD'|.
+      l_title = TEXT-011.
+
+    WHEN 'SMODUL'.
+      l_where = |code = 'SM'|.
+      l_title = TEXT-012.
+  ENDCASE.
+
+  " code에 따른 key1값 select
+  IF p_fieldname EQ 'SMODUL'.
+
+    READ TABLE gt_data INTO DATA(ls_data) INDEX ps_row_no-row_id.
+
+    SELECT a~key1, a~des1
+      FROM @gt_key AS a
+     WHERE (l_where)
+       AND flag1 EQ @ls_data-modul "모듈에 맞는 서브모듈 조건
+      INTO CORRESPONDING FIELDS OF TABLE @gt_onf4.
+
+  ELSE. "나머지 필드 f4 값 셀렉트
+
+    SELECT a~key1, a~des1
+      FROM @gt_key AS a
+     WHERE (l_where)
+      INTO CORRESPONDING FIELDS OF TABLE @gt_onf4.
+
+  ENDIF.
+
+  "f4펑션
+  CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+    EXPORTING
+      retfield        = 'KEY1'
+      dynpprog        = sy-repid
+      dynpnr          = sy-dynnr
+      window_title    = l_title
+      value_org       = c_s
+    TABLES
+      value_tab       = gt_onf4
+      return_tab      = lt_ret
+    EXCEPTIONS
+      parameter_error = 1
+      no_values_found = 2
+      OTHERS          = 3.
+
+  "스탠다드 f4를 사용하지 않는다.
+  pr_event_data->m_event_handled = c_x.
+
+  "space주면 수정 시 값 입력을 허용함.
+  CHECK p_display = space. "
+
+  ASSIGN pr_event_data->m_data->* TO <lft_itab>.
+
+  READ TABLE lt_ret INTO ls_ret INDEX 1.
+
+  IF sy-subrc EQ 0.
+    ls_modi-row_id    = ps_row_no-row_id.
+    ls_modi-fieldname = p_fieldname.
+    ls_modi-value     = ls_ret-fieldval.
+
+    APPEND ls_modi TO <lft_itab>.
+    CLEAR ls_modi.
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form on_f4
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM on_f4 .
+
+  DATA : ls_f4 TYPE lvc_s_f4,
+         lt_f4 TYPE lvc_t_f4.
+
+  lt_f4 = VALUE #(
+  ( fieldname = 'PJTRL' register = c_x getbefore = c_x chngeafter = c_x )
+  ( fieldname = 'COMPT' register = c_x getbefore = c_x chngeafter = c_x )
+  ( fieldname = 'MODUL' register = c_x getbefore = c_x chngeafter = c_x )
+  ( fieldname = 'SMODUL' register = c_x getbefore = c_x chngeafter = c_x )
+                    ).
+
+  CALL METHOD gr_grid->register_f4_for_fields
+    EXPORTING
+      it_f4 = lt_f4.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*&      FORM  HDL_DATA_CHANGED_FINISHED
+*&---------------------------------------------------------------------*
+FORM hdl_data_changed_finished   USING  p_modi        TYPE char01
+                                        pt_good_cells TYPE lvc_t_modi
+                                        p_sender.
+
+  CHECK p_modi IS NOT INITIAL.
+
+  g_change = p_modi.
+
+  "ALV refresh
+*  PERFORM gsi_refresh_data USING gr_grid gs_layout.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form before_save_check_data
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*&      --> GR_GRID
+*&---------------------------------------------------------------------*
+FORM before_save_check_data USING pr_grid TYPE REF TO zccac_gui_alv_grid.
+
+  IF pr_grid IS NOT INITIAL.
+    CALL METHOD pr_grid->check_changed_data.
+  ENDIF.
+
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form set_display_change2
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*& -->  p1        text
+*& <--  p2        text
+*&---------------------------------------------------------------------*
+FORM set_display_change2 .
+
+  CLEAR gs_data-celltab.
+
+  PERFORM modify_cellstyl USING : 'STATUS'        'D' gs_data-celltab,
+                                  'PJTID'         'D' gs_data-celltab,
+                                  'SEQNR'         'D' gs_data-celltab,
+                                  'DES1'          'D' gs_data-celltab,
+                                  'ERROR'         'D' gs_data-celltab.
+
+ENDFORM.
