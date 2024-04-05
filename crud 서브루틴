@@ -741,9 +741,11 @@ FORM change_line .
       ENDIF.
 
     ELSE.
-      gs_data-status = icon_locked.
-      l_flag = c_x.
-
+      "create는 lock데이터로 인식하지 않기 위한 조건.
+      IF gs_data-status NE icon_create.
+        gs_data-status = icon_locked.
+        l_flag = c_x.
+      ENDIF.
 *      CLEAR gt_enq.
 *      g_garg(3)     = sy-mandt.
 *      g_garg+3(10)  = gs_data-pjtid.
