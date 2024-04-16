@@ -1,4 +1,4 @@
-*&---------------------------------------------------------------------*
+
 *& Include          ZAACE_09021F01
 *&---------------------------------------------------------------------*
 *&---------------------------------------------------------------------*
@@ -50,59 +50,41 @@ ENDFORM.
 *&---------------------------------------------------------------------*
 FORM get_data .
 
+  DATA : l_pjtrl TYPE ztace_09021-pjtrl,
+         l_dtjob TYPE ztace_09021-dtjob,
+         l_name  TYPE ztace_09021-name_teng.
+
   CLEAR   : gs_data, g_change.
   REFRESH : gt_data.
 
-  IF p_pjtrl IS NOT INITIAL.
-    gr_pjtrl-sign = c_i.
-    gr_pjtrl-option = 'EQ'.
-    gr_pjtrl-low    = p_pjtrl.
-    gr_pjtrl-high   = p_pjtrl.
-    APPEND gr_pjtrl.
+  l_pjtrl = |%{ p_pjtrl }%|.
+  l_dtjob = |%{ s_dtjob-low }%|.
+  l_name  = |{ s_name-low }%|.
+
+*  p_delet 퇴사/롤오프 조회 분기 if
+  IF p_delet EQ space.
+    gr_delet[] = VALUE #( ( sign = c_i option = 'EQ' low = space ) ).
   ENDIF.
 
-  "p_delet 퇴사/롤오프 조회 분기 if
-  IF p_delet IS INITIAL.
-
-    SELECT a~pjtid,  a~pernr, a~seqnr, a~spjtid, a~pjtrl, a~uname,
-           a~name_teng, a~name_text, a~compt, a~department, a~modul,
-           a~smodul, a~dtjob, a~tel_number, a~mob_number,
-           a~smtp_addr, a~pgltgv, a~pgltgb, a~gltgv, a~gltgb,
-           a~ipadr, a~macad, a~remrk, a~orgac, a~delet,
-           b~des1
-    INTO CORRESPONDING FIELDS OF TABLE @gt_data
-    FROM ztace_09021 AS a
-    LEFT OUTER JOIN ztace_09010 AS b
-                ON a~smodul EQ b~key1
-                AND a~pjtid EQ b~pjtid
-                AND b~code EQ 'SM'
-   WHERE a~pjtid EQ @p_pjtid
-    AND a~modul  IN @s_modul
-    AND a~smodul IN @s_smodu
-    AND a~name_teng IN @s_name
-    AND a~pjtrl     IN @gr_pjtrl.
-
-  ELSE. "퇴사,롤오프 포함
-    SELECT a~pjtid,  a~pernr, a~seqnr, a~spjtid, a~pjtrl, a~uname,
-           a~name_teng, a~name_text, a~compt, a~department, a~modul,
-           a~smodul, a~dtjob, a~tel_number, a~mob_number,
-           a~smtp_addr, a~pgltgv, a~pgltgb, a~gltgv, a~gltgb,
-           a~ipadr, a~macad, a~remrk, a~orgac, a~delet,
-           b~des1
-    INTO CORRESPONDING FIELDS OF TABLE @gt_data
-    FROM ztace_09021 AS a
-    LEFT OUTER JOIN ztace_09010 AS b
-                ON a~smodul EQ b~key1
-                AND a~pjtid EQ b~pjtid
-                AND b~code EQ 'SM'
-   WHERE a~pjtid EQ @p_pjtid
-    AND a~modul  IN @s_modul
-    AND a~smodul IN @s_smodu
-    AND a~name_teng IN @s_name
-    AND a~pjtrl     IN @gr_pjtrl
-    AND delet EQ @c_x.
-
-  ENDIF.
+  SELECT a~pjtid,  a~pernr, a~seqnr, a~spjtid, a~pjtrl, a~uname,
+         a~name_teng, a~name_text, a~compt, a~department, a~modul,
+         a~smodul, a~dtjob, a~tel_number, a~mob_number,
+         a~smtp_addr, a~pgltgv, a~pgltgb, a~gltgv, a~gltgb,
+         a~ipadr, a~macad, a~remrk, a~orgac, a~delet,
+         b~des1
+  INTO CORRESPONDING FIELDS OF TABLE @gt_data
+  FROM ztace_09021 AS a
+  LEFT OUTER JOIN ztace_09010 AS b
+              ON a~smodul EQ b~key1
+              AND a~pjtid EQ b~pjtid
+              AND b~code EQ 'SM'
+  WHERE a~pjtid EQ @p_pjtid
+  AND a~modul   IN @s_modul
+  AND a~smodul  IN @s_smodu
+  AND delet     IN @gr_delet
+  AND a~name_teng LIKE @l_name
+  AND a~dtjob     LIKE @l_dtjob
+  AND a~pjtrl     LIKE @l_pjtrl.
 
 *  유효성 검사시 SAP ID 조회용
   SELECT bname
@@ -119,7 +101,6 @@ FORM get_data .
     FROM ztace_09010
     INTO CORRESPONDING FIELDS OF TABLE gt_key
    WHERE pjtid = p_pjtid.
-
 
 ENDFORM.
 *&---------------------------------------------------------------------*
@@ -264,6 +245,7 @@ FORM build_fieldcat TABLES   pt_fieldcat  TYPE lvc_t_fcat
 
       WHEN 'ORGAC'.
         PERFORM gsi_text USING TEXT-028.
+        gs_fieldcat-f4availabl = c_x.
 
       WHEN 'PJTRL'.
         PERFORM gsi_text USING TEXT-005.
@@ -284,6 +266,7 @@ FORM build_fieldcat TABLES   pt_fieldcat  TYPE lvc_t_fcat
 
       WHEN 'DEPARTMENT'.
         PERFORM gsi_text USING TEXT-010.
+        gs_fieldcat-f4availabl = c_x.
 
       WHEN 'MODUL'.
         PERFORM gsi_text USING TEXT-011.
@@ -1056,12 +1039,12 @@ FORM check_save_data  USING ps_data LIKE gs_data.
         EXIT.
       ENDIF.
 
-      IF ps_data-modul IS INITIAL.
-        ps_data-error = TEXT-e12.
-        ps_data-color = c_610.
-        ps_data-status = icon_led_red.
-        EXIT.
-      ENDIF.
+*      IF ps_data-modul IS INITIAL.
+*        ps_data-error = TEXT-e12.
+*        ps_data-color = c_610.
+*        ps_data-status = icon_led_red.
+*        EXIT.
+*      ENDIF.
 
 *      IF ps_data-smodul IS INITIAL.
 *        ps_data-error = TEXT-e13.
@@ -1108,6 +1091,15 @@ FORM check_save_data  USING ps_data LIKE gs_data.
       READ TABLE gt_bname INTO gs_bname WITH KEY bname = gs_data-uname BINARY SEARCH.
       IF sy-subrc NE 0.
         ps_data-error = TEXT-e20.
+        ps_data-color = c_610.
+        ps_data-status = icon_led_red.
+        EXIT.
+      ENDIF.
+
+      READ TABLE gt_key INTO gs_key WITH KEY key1 = gs_data-modul
+                                             code = 'MD'.
+      IF sy-subrc NE 0 AND gs_data-modul IS NOT INITIAL.
+        ps_data-error = TEXT-e25.
         ps_data-color = c_610.
         ps_data-status = icon_led_red.
         EXIT.
@@ -1195,6 +1187,15 @@ FORM check_save_data  USING ps_data LIKE gs_data.
       READ TABLE gt_bname INTO gs_bname WITH KEY bname = gs_data-uname BINARY SEARCH.
       IF sy-subrc NE 0.
         ps_data-error = TEXT-e20.
+        ps_data-color = c_610.
+        ps_data-status = icon_led_red.
+        EXIT.
+      ENDIF.
+
+      READ TABLE gt_key INTO gs_key WITH KEY key1 = gs_data-modul
+                                             code = 'MD'.
+      IF sy-subrc NE 0 AND gs_data-modul IS NOT INITIAL.
+        ps_data-error = TEXT-e25.
         ps_data-color = c_610.
         ps_data-status = icon_led_red.
         EXIT.
@@ -1301,32 +1302,29 @@ FORM hdl_data_changed USING pr_data_changed
     CLEAR : ls_list-smodul, ls_list-des1. "모듈 변경시 서브모듈 clear
     MODIFY gt_data FROM ls_list INDEX <lfs_cell>-row_id TRANSPORTING smodul des1.
 
-    "잘못된 모듈입력 시 프로토콜 메시지를 띄우기 위함.
-    READ TABLE gt_key INTO gs_key
-                     WITH KEY key1 = <lfs_cell>-value "입력값
-                              code = l_code.
 
     "code(RO,CP) 잘못된 데이터 입력시  프로토콜 메시지 띄우기 위함
-  ELSEIF l_code IS NOT INITIAL.
+  ELSEIF l_code EQ 'RO' OR l_code EQ 'CP'.
+
     READ TABLE gt_key INTO gs_key
                       WITH KEY key1 = <lfs_cell>-value "입력값
                                code = l_code.
+
+    IF sy-subrc NE 0.
+      CALL METHOD pr_data_changed->add_protocol_entry
+        EXPORTING
+          i_msgid     = 'ZMACE_00' "메세지ID
+          i_msgty     = c_e "에러 타입 E
+          i_msgno     = '000' "&&&& (메세지 번호)
+          i_msgv1     = TEXT-e21 "표시할 메세지
+*         i_fieldname = <lfs_cell>-fieldname "대상필드명
+          i_fieldname = ls_cell-fieldname "대상필드명
+*         i_row_id    = <lfs_cell>-row_id. "대상 행 번호
+          i_row_id    = ls_cell-row_id. "대상 행 번호
+
+    ENDIF.
   ENDIF.
 
-  "p/e에 없는 값 입력시 에러 메시지
-  IF sy-subrc NE 0 AND l_code IS NOT INITIAL AND l_code NE 'SM'.
-    CALL METHOD pr_data_changed->add_protocol_entry
-      EXPORTING
-        i_msgid     = 'ZMACE_00' "메세지ID
-        i_msgty     = c_e "에러 타입 E
-        i_msgno     = '000' "&&&& (메세지 번호)
-        i_msgv1     = TEXT-e21 "표시할 메세지
-*       i_fieldname = <lfs_cell>-fieldname "대상필드명
-        i_fieldname = ls_cell-fieldname "대상필드명
-*       i_row_id    = <lfs_cell>-row_id. "대상 행 번호
-        i_row_id    = ls_cell-row_id. "대상 행 번호
-
-  ENDIF.
 
   "수정시 CHANGE 아이콘
   IF ls_list-mode = c_u AND ls_list-status NE icon_change.
@@ -1353,8 +1351,6 @@ FORM delete_data .
 
   DATA : l_answer TYPE c.
 
-
-
   CALL METHOD gr_grid->get_selected_rows
     IMPORTING
       et_index_rows = DATA(lt_rows).
@@ -1368,15 +1364,15 @@ FORM delete_data .
 
   CALL FUNCTION 'POPUP_TO_CONFIRM'
     EXPORTING
-      titlebar              = 'Confirm'
-      text_question         = TEXT-m06
-      icon_button_1         = 'ICON_CHECKED'
-      text_button_1         = 'Yes'
-      text_button_2         = 'No'
-      icon_button_2         = 'ICON_SYSTEM_CANCEL'
-      display_cancel_button = ''
+      titlebar      = 'Confirm'
+      text_question = TEXT-m06
+      icon_button_1 = 'ICON_CHECKED'
+      text_button_1 = 'Yes'
+      text_button_2 = 'No'
+      icon_button_2 = 'ICON_SYSTEM_CANCEL'
+*     display_cancel_button = ''
     IMPORTING
-      answer                = l_answer.
+      answer        = l_answer.
 
   IF l_answer NE '1'.
     RETURN.
@@ -1443,60 +1439,90 @@ FORM hdl_onf4 USING p_fieldname   TYPE lvc_fname
         lt_ret  LIKE TABLE OF ls_ret.
 
   DATA :l_where(20),
-        l_title(20).
+        l_title(20),
+        l_retfield TYPE dfies-fieldname.
 
-  CLEAR   : ls_modi.
+  CLEAR   : ls_modi, l_where, l_title, l_retfield.
   REFRESH : gt_onf4.
 
   "필드마다 p/e값을 다르게 보여주기 위한 case문
   CASE p_fieldname.
-    WHEN 'PJTRL'.
-      l_where = |code = 'RO'|.
-      l_title = TEXT-005.
+    WHEN 'COMPT' OR 'PJTRL' OR 'DEPARTMENT'.
+      l_retfield = 'KEY1'.
 
-    WHEN 'COMPT'.
-      l_where = |code = 'CP'|.
-      l_title = TEXT-009.
+      CASE p_fieldname.
+        WHEN 'COMPT'.
+          l_where = |code = 'CP'|.
+          l_title = TEXT-009.
+        WHEN 'PJTRL'.
+          l_where = |code = 'RO'|.
+          l_title = TEXT-005.
+        WHEN 'DEPARTMENT'.
+          l_where = |code = 'DP'|.
+          l_title = TEXT-010.
+      ENDCASE.
+
+      "f4 팝업 인터털 테이블이 각 다르기에 다이나믹 테이블 폼 선언
+      PERFORM dynamic_table USING 'ty_key2'.
+
+      SELECT a~key1
+          FROM @gt_key AS a
+         WHERE (l_where)
+         INTO CORRESPONDING FIELDS OF TABLE @<fs_table>.
 
     WHEN 'MODUL'.
-      l_where = |code = 'MD'|.
       l_title = TEXT-011.
+      l_retfield = 'KEY1'.
+
+      PERFORM dynamic_table USING 'ty_key1'.
+
+      SELECT a~key1, a~des1
+         FROM @gt_key AS a
+         WHERE code = 'MD'
+         INTO CORRESPONDING FIELDS OF TABLE @<fs_table>.
 
     WHEN 'SMODUL'.
-      l_where = |code = 'SM'|.
       l_title = TEXT-012.
+      l_retfield = 'KEY1'.
+      READ TABLE gt_data INTO DATA(ls_data) INDEX ps_row_no-row_id.
+
+*    flag가 5자리이기 때문에 하단 sql에서 오류방지를 위한 조건문
+      IF strlen( ls_data-modul ) GT 5.
+        CLEAR ls_data-modul.
+      ENDIF.
+
+      PERFORM dynamic_table USING 'ty_key1'.
+
+      SELECT a~key1, a~des1
+        FROM @gt_key AS a
+       WHERE code = 'SM'
+         AND flag1 EQ @ls_data-modul "모듈에 맞는 서브모듈 조건
+        INTO CORRESPONDING FIELDS OF TABLE @<fs_table>.
+
+    WHEN 'ORGAC'.
+      l_title = TEXT-028.
+      l_retfield = 'ORGAC'.
+
+      PERFORM dynamic_table USING 'ty_org'.
+
+      SELECT a~uorgac, b~orgat AS uorgat, a~orgac, a~orgat
+        FROM ztace_09022  AS a
+        LEFT OUTER JOIN ztace_09022 AS b
+          ON a~uorgac EQ b~orgac
+        INTO CORRESPONDING FIELDS OF TABLE @<fs_table>.
+
   ENDCASE.
-
-  " code에 따른 key1값 select
-  IF p_fieldname EQ 'SMODUL'.
-
-    READ TABLE gt_data INTO DATA(ls_data) INDEX ps_row_no-row_id.
-
-    SELECT a~key1, a~des1
-      FROM @gt_key AS a
-     WHERE (l_where)
-       AND flag1 EQ @ls_data-modul "모듈에 맞는 서브모듈 조건
-      INTO CORRESPONDING FIELDS OF TABLE @gt_onf4.
-
-  ELSE. "나머지 필드 f4 값 셀렉트
-
-    SELECT a~key1, a~des1
-      FROM @gt_key AS a
-     WHERE (l_where)
-      INTO CORRESPONDING FIELDS OF TABLE @gt_onf4.
-
-  ENDIF.
 
   "f4펑션
   CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
     EXPORTING
-      retfield        = 'KEY1'
+      retfield        = l_retfield
       dynpprog        = sy-repid
       dynpnr          = sy-dynnr
       window_title    = l_title
       value_org       = c_s
     TABLES
-      value_tab       = gt_onf4
+      value_tab       = <fs_table>
       return_tab      = lt_ret
     EXCEPTIONS
       parameter_error = 1
@@ -1521,7 +1547,6 @@ FORM hdl_onf4 USING p_fieldname   TYPE lvc_fname
     APPEND ls_modi TO <lft_itab>.
     CLEAR ls_modi.
   ENDIF.
-
 ENDFORM.
 *&---------------------------------------------------------------------*
 *& Form on_f4
@@ -1537,10 +1562,12 @@ FORM on_f4 .
          lt_f4 TYPE lvc_t_f4.
 
   lt_f4 = VALUE #(
-  ( fieldname = 'PJTRL' register = c_x getbefore = c_x chngeafter = c_x )
-  ( fieldname = 'COMPT' register = c_x getbefore = c_x chngeafter = c_x )
-  ( fieldname = 'MODUL' register = c_x getbefore = c_x chngeafter = c_x )
-  ( fieldname = 'SMODUL' register = c_x getbefore = c_x chngeafter = c_x )
+  ( fieldname = 'PJTRL'      register = c_x getbefore = c_x chngeafter = c_x )
+  ( fieldname = 'COMPT'      register = c_x getbefore = c_x chngeafter = c_x )
+  ( fieldname = 'MODUL'      register = c_x getbefore = c_x chngeafter = c_x )
+  ( fieldname = 'SMODUL'     register = c_x getbefore = c_x chngeafter = c_x )
+  ( fieldname = 'ORGAC'      register = c_x getbefore = c_x chngeafter = c_x )
+  ( fieldname = 'DEPARTMENT' register = c_x getbefore = c_x chngeafter = c_x )
                     ).
 
   CALL METHOD gr_grid->register_f4_for_fields
@@ -1595,4 +1622,24 @@ FORM set_display_change2 .
                                   'DES1'          'D' gs_data-celltab,
                                   'ERROR'         'D' gs_data-celltab.
 
+ENDFORM.
+*&---------------------------------------------------------------------*
+*& Form dynamic_table
+*&---------------------------------------------------------------------*
+*& text
+*&---------------------------------------------------------------------*
+*&      --> P_
+*&---------------------------------------------------------------------*
+FORM dynamic_table  USING p_name.
+
+  DATA : lo_struct        TYPE REF TO cl_abap_structdescr,
+         lo_table         TYPE REF TO cl_abap_tabledescr.
+  DATA : lr_dynamic_table TYPE REF TO data .
+
+  lo_struct ?= cl_abap_typedescr=>describe_by_name( p_name ).
+  lo_table  = cl_abap_tabledescr=>create( lo_struct ) .
+
+  CREATE DATA lr_dynamic_table TYPE HANDLE lo_table .
+
+  ASSIGN lr_dynamic_table->* TO <fs_table> .
 ENDFORM.
